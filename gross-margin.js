@@ -1,25 +1,37 @@
 (function () {
   const originalRenderCompanyDetail = renderCompanyDetail;
 
+  const grossMarginMonths = [
+    { month: "Jan", actual: 3116, budget: 3040, ly: 2926 },
+    { month: "Feb", actual: 3344, budget: 3306, ly: 3173 },
+    { month: "Mar", actual: 3534, budget: 3572, ly: 3363 },
+    { month: "Apr", actual: 3686, budget: 3724, ly: 3515 },
+    { month: "May", actual: 3800, budget: 3800, ly: 3619 },
+  ];
+
+  if (!state.grossMarginChartMode) state.grossMarginChartMode = "YTD";
+
+  function cumulativeGrossMarginMonths() {
+    let actual = 0;
+    let budget = 0;
+    let ly = 0;
+
+    return grossMarginMonths.map((row) => {
+      actual += row.actual;
+      budget += row.budget;
+      ly += row.ly;
+      return { month: row.month, actual, budget, ly };
+    });
+  }
+
   function renderGrossMarginDetail(company) {
-    const overview = [
-      { label: "YTD Gross Margin", actual: "3,800.0", budget: "+50.0", ly: "+81.9", budgetGood: true, lyGood: true },
-      { label: "YTD GM % of revenues", actual: "38.0%", budget: "+0.5pp", ly: "+0.4pp", budgetGood: true, lyGood: true },
-      { label: "Monthly Gross Margin", actual: "3,800.0", budget: "+50.0", ly: "+81.9", budgetGood: true, lyGood: true },
-      { label: "Monthly GM % of revenues", actual: "38.0%", budget: "+0.5pp", ly: "+0.4pp", budgetGood: true, lyGood: true },
-    ];
-
+    const rows = state.grossMarginChartMode === "YTD" ? cumulativeGrossMarginMonths() : grossMarginMonths;
+    const maxValue = Math.max(...rows.flatMap((row) => [row.actual, row.budget, row.ly]));
     const breakdown = [
-      { segment: "Business line A", actual: "1,615", margin: "38.0%", budget: "+35", ly: "+0.3pp", good: true },
-      { segment: "Business line B", actual: "1,140", margin: "40.0%", budget: "+55", ly: "+0.8pp", good: true },
-      { segment: "Business line C", actual: "665", margin: "35.0%", budget: "-30", ly: "-0.5pp", good: false },
-      { segment: "Other", actual: "380", margin: "38.0%", budget: "-10", ly: "+0.1pp", good: false },
-    ];
-
-    const questions = [
-      "Is the margin movement driven by mix, pricing or input-cost pressure?",
-      "Which business line explains the largest variance vs budget?",
-      "Is the current YTD margin level consistent with the full-year plan?",
+      { segment: "Business line A", actual: "1,615", share: "42.5%", budget: "+35", ly: "+2.2%", good: true },
+      { segment: "Business line B", actual: "1,140", share: "30.0%", budget: "+55", ly: "+5.1%", good: true },
+      { segment: "Business line C", actual: "665", share: "17.5%", budget: "-30", ly: "-1.4%", good: false },
+      { segment: "Other", actual: "380", share: "10.0%", budget: "-10", ly: "+0.7%", good: false },
     ];
 
     return `
@@ -27,52 +39,84 @@
       <button class="back" data-back-detail>Back to financial indicators</button>
       ${section({
         title: "Gross Margin detail",
-        kicker: `${company.name} · ${company.month} ${company.fy} · ${state.detailMode} focus`,
-        right: `<span class="eyebrow">EURm / % of revenues</span>`,
+        kicker: `${company.name} · ${company.month} ${company.fy}`,
+        right: `<span class="eyebrow">EURm</span>`,
         body: `
           <div class="summary-box">
             <div class="summary-title">Summary</div>
-            <p>Gross Margin is above budget both in absolute terms and as a percentage of revenues. The main positive contribution comes from Business line B, while Business line C remains below plan.</p>
+            <p>Gross Margin is broadly on budget YTD and above last year. The only visible weakness is Business line C, partly offset by stronger Business line B trading.</p>
           </div>
         `,
       })}
       ${section({
-        title: "Gross Margin overview",
-        kicker: "Absolute gross margin and margin percentage",
-        body: `<div class="grid-4">${overview.map(renderGrossMarginOverviewCard).join("")}</div>`,
+        title: "Gross Margin development",
+        kicker: state.grossMarginChartMode === "YTD" ? "Cumulative actual vs budget vs last year" : "Monthly actual vs budget vs last year",
+        right: renderGrossMarginToggle(),
+        body: `${renderGrossMarginBars(rows, maxValue)}${renderGrossMarginLegend()}`,
       })}
-      <div class="grid-2">
-        ${section({
-          title: "Gross Margin breakdown",
-          kicker: "Segment / channel view",
-          body: renderTable(
-            ["Segment", "YTD Gross Margin", "GM %", "vs budget", "vs LY"],
-            breakdown.map((row) => [
-              row.segment,
-              row.actual,
-              row.margin,
-              varianceBadge({ pct: row.budget, abs: "", good: row.good }),
-              varianceBadge({ pct: row.ly, abs: "", good: row.ly.startsWith("+") }),
-            ])
-          ),
-        })}
-        ${section({
-          title: "Follow-up questions",
-          kicker: "For management discussion",
-          dark: true,
-          body: `<ol class="question-list">${questions.map((question) => `<li>${question}</li>`).join("")}</ol>`,
-        })}
+      ${section({
+        title: "Gross Margin breakdown",
+        kicker: "Segment / channel view",
+        body: renderTable(
+          ["Segment", "YTD actual", "Share", "vs budget", "vs LY"],
+          breakdown.map((row) => [
+            row.segment,
+            row.actual,
+            row.share,
+            varianceBadge({ pct: row.budget, abs: "", good: row.good }),
+            varianceBadge({ pct: row.ly, abs: "", good: row.ly.startsWith("+") }),
+          ])
+        ),
+      })}
+    `;
+  }
+
+  function renderGrossMarginToggle() {
+    return `
+      <div class="toggle">
+        <button class="${state.grossMarginChartMode === "YTD" ? "active" : ""}" data-gross-margin-chart="YTD">YTD</button>
+        <button class="${state.grossMarginChartMode === "Monthly" ? "active" : ""}" data-gross-margin-chart="Monthly">Monthly</button>
       </div>
     `;
   }
 
-  function renderGrossMarginOverviewCard(item) {
+  function renderGrossMarginBars(rows, maxValue) {
     return `
-      <div class="kpi">
-        <div class="kpi-label">${item.label}</div>
-        <div class="kpi-value">${item.actual}</div>
-        ${varianceBadge({ label: "vs budget", pct: item.budget, abs: "", good: item.budgetGood })}
-        ${varianceBadge({ label: "vs LY", pct: item.ly, abs: "", good: item.lyGood })}
+      <div class="chart-grid">
+        ${rows.map((row) => {
+          const budgetVariance = row.actual - row.budget;
+          const lyVariance = row.actual - row.ly;
+          const budgetPct = `${budgetVariance >= 0 ? "+" : ""}${((row.actual / row.budget - 1) * 100).toFixed(1)}%`;
+          const lyPct = `${lyVariance >= 0 ? "+" : ""}${((row.actual / row.ly - 1) * 100).toFixed(1)}%`;
+
+          return `
+            <div class="chart-month">
+              <div class="bars">
+                <div class="bar-wrap"><div class="bar actual" style="height: ${(row.actual / maxValue) * 100}%;"></div></div>
+                <div class="bar-wrap"><div class="bar budget" style="height: ${(row.budget / maxValue) * 100}%;"></div></div>
+                <div class="bar-wrap"><div class="bar ly" style="height: ${(row.ly / maxValue) * 100}%;"></div></div>
+              </div>
+              <div class="month-label">
+                <strong>${row.month}</strong>
+                <span>${row.actual.toLocaleString()}</span>
+              </div>
+              <div class="mini-variance">
+                <div class="mini-badge ${budgetVariance >= 0 ? "good" : "bad"}">BUD<br>${budgetPct}</div>
+                <div class="mini-badge ${lyVariance >= 0 ? "good" : "bad"}">LY<br>${lyPct}</div>
+              </div>
+            </div>
+          `;
+        }).join("")}
+      </div>
+    `;
+  }
+
+  function renderGrossMarginLegend() {
+    return `
+      <div class="legend">
+        <span><span class="legend-mark" style="background: var(--black);"></span>Actual</span>
+        <span><span class="legend-mark" style="background: #B7B3AA;"></span>Budget</span>
+        <span><span class="legend-mark" style="background: #D1CEC7;"></span>Last year</span>
       </div>
     `;
   }
@@ -127,6 +171,12 @@
     document.querySelectorAll("[data-revenue-chart]").forEach((button) => {
       button.addEventListener("click", () => {
         state.revenueChartMode = button.dataset.revenueChart;
+        render();
+      });
+    });
+    document.querySelectorAll("[data-gross-margin-chart]").forEach((button) => {
+      button.addEventListener("click", () => {
+        state.grossMarginChartMode = button.dataset.grossMarginChart;
         render();
       });
     });
