@@ -9,6 +9,14 @@
     { month: "May", actual: 3800, budget: 3800, ly: 3619 },
   ];
 
+  const revenueReferenceMonths = [
+    { month: "Jan", actual: 8200 },
+    { month: "Feb", actual: 8800 },
+    { month: "Mar", actual: 9300 },
+    { month: "Apr", actual: 9700 },
+    { month: "May", actual: 10000 },
+  ];
+
   if (!state.grossMarginChartMode) state.grossMarginChartMode = "YTD";
 
   function cumulativeGrossMarginMonths() {
@@ -24,8 +32,32 @@
     });
   }
 
+  function grossMarginPercentageRows() {
+    let cumulativeGrossMargin = 0;
+    let cumulativeRevenue = 0;
+
+    return grossMarginMonths.map((row, index) => {
+      const revenue = revenueReferenceMonths[index].actual;
+
+      if (state.grossMarginChartMode === "YTD") {
+        cumulativeGrossMargin += row.actual;
+        cumulativeRevenue += revenue;
+        return {
+          month: row.month,
+          pct: (cumulativeGrossMargin / cumulativeRevenue) * 100,
+        };
+      }
+
+      return {
+        month: row.month,
+        pct: (row.actual / revenue) * 100,
+      };
+    });
+  }
+
   function renderGrossMarginDetail(company) {
     const rows = state.grossMarginChartMode === "YTD" ? cumulativeGrossMarginMonths() : grossMarginMonths;
+    const percentRows = grossMarginPercentageRows();
     const maxValue = Math.max(...rows.flatMap((row) => [row.actual, row.budget, row.ly]));
     const breakdown = [
       { segment: "Business line A", actual: "1,615", share: "42.5%", budget: "+35", ly: "+2.2%", good: true },
@@ -53,6 +85,12 @@
         kicker: state.grossMarginChartMode === "YTD" ? "Cumulative actual vs budget vs last year" : "Monthly actual vs budget vs last year",
         right: renderGrossMarginToggle(),
         body: `${renderGrossMarginBars(rows, maxValue)}${renderGrossMarginLegend()}`,
+      })}
+      ${section({
+        title: "Gross Margin % of revenues",
+        kicker: state.grossMarginChartMode === "YTD" ? "Cumulative gross margin as % of cumulative revenues" : "Monthly gross margin as % of monthly revenues",
+        right: `<span class="eyebrow">Actual only</span>`,
+        body: renderGrossMarginPercentChart(percentRows),
       })}
       ${section({
         title: "Gross Margin breakdown",
@@ -107,6 +145,51 @@
             </div>
           `;
         }).join("")}
+      </div>
+    `;
+  }
+
+  function renderGrossMarginPercentChart(rows) {
+    const width = 1000;
+    const height = 260;
+    const paddingX = 54;
+    const paddingTop = 26;
+    const paddingBottom = 46;
+    const values = rows.map((row) => row.pct);
+    const minValue = Math.floor(Math.min(...values) - 1);
+    const maxValue = Math.ceil(Math.max(...values) + 1);
+    const innerWidth = width - paddingX * 2;
+    const innerHeight = height - paddingTop - paddingBottom;
+
+    const points = rows.map((row, index) => {
+      const x = paddingX + (innerWidth / (rows.length - 1)) * index;
+      const y = paddingTop + ((maxValue - row.pct) / (maxValue - minValue)) * innerHeight;
+      return { ...row, x, y };
+    });
+
+    const polyline = points.map((point) => `${point.x},${point.y}`).join(" ");
+    const yTicks = [maxValue, (maxValue + minValue) / 2, minValue];
+
+    return `
+      <div style="background:white;border-radius:3px;padding:18px 18px 10px;">
+        <svg viewBox="0 0 ${width} ${height}" width="100%" height="260" role="img" aria-label="Gross Margin percentage of revenues line chart">
+          ${yTicks.map((tick) => {
+            const y = paddingTop + ((maxValue - tick) / (maxValue - minValue)) * innerHeight;
+            return `
+              <line x1="${paddingX}" y1="${y}" x2="${width - paddingX}" y2="${y}" stroke="#D8D6D0" stroke-width="1" />
+              <text x="${paddingX - 12}" y="${y + 4}" text-anchor="end" font-size="22" fill="#817C75">${tick.toFixed(1)}%</text>
+            `;
+          }).join("")}
+          <polyline points="${polyline}" fill="none" stroke="#000000" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" />
+          ${points.map((point) => `
+            <circle cx="${point.x}" cy="${point.y}" r="8" fill="#000000" />
+            <text x="${point.x}" y="${point.y - 16}" text-anchor="middle" font-size="22" font-weight="800" fill="#000000">${point.pct.toFixed(1)}%</text>
+            <text x="${point.x}" y="${height - 12}" text-anchor="middle" font-size="22" font-weight="800" fill="#817C75">${point.month}</text>
+          `).join("")}
+        </svg>
+      </div>
+      <div class="legend">
+        <span><span class="legend-mark" style="background: var(--black);"></span>Gross Margin % of revenues</span>
       </div>
     `;
   }
