@@ -9,12 +9,20 @@
     { month: "May", actual: 3800, budget: 3800, ly: 3619 },
   ];
 
-  const revenueReferenceMonths = [
-    { month: "Jan", actual: 8200, budget: 8000, ly: 7700 },
-    { month: "Feb", actual: 8800, budget: 8700, ly: 8350 },
-    { month: "Mar", actual: 9300, budget: 9400, ly: 8850 },
-    { month: "Apr", actual: 9700, budget: 9800, ly: 9250 },
-    { month: "May", actual: 10000, budget: 10000, ly: 9524 },
+  const grossMarginPercentMonthly = [
+    { month: "Jan", actual: 37.2, budget: 36.9, ly: 35.9 },
+    { month: "Feb", actual: 38.0, budget: 37.4, ly: 36.6 },
+    { month: "Mar", actual: 37.1, budget: 38.0, ly: 37.0 },
+    { month: "Apr", actual: 38.4, budget: 38.1, ly: 37.6 },
+    { month: "May", actual: 38.0, budget: 37.8, ly: 37.3 },
+  ];
+
+  const grossMarginPercentYtd = [
+    { month: "Jan", actual: 37.2, budget: 36.9, ly: 35.9 },
+    { month: "Feb", actual: 37.6, budget: 37.2, ly: 36.3 },
+    { month: "Mar", actual: 37.4, budget: 37.5, ly: 36.6 },
+    { month: "Apr", actual: 37.7, budget: 37.7, ly: 36.9 },
+    { month: "May", actual: 37.8, budget: 37.8, ly: 37.0 },
   ];
 
   if (!state.grossMarginChartMode) state.grossMarginChartMode = "YTD";
@@ -33,39 +41,7 @@
   }
 
   function grossMarginPercentageRows() {
-    let actualGrossMargin = 0;
-    let budgetGrossMargin = 0;
-    let lyGrossMargin = 0;
-    let actualRevenue = 0;
-    let budgetRevenue = 0;
-    let lyRevenue = 0;
-
-    return grossMarginMonths.map((row, index) => {
-      const revenue = revenueReferenceMonths[index];
-
-      if (state.grossMarginChartMode === "YTD") {
-        actualGrossMargin += row.actual;
-        budgetGrossMargin += row.budget;
-        lyGrossMargin += row.ly;
-        actualRevenue += revenue.actual;
-        budgetRevenue += revenue.budget;
-        lyRevenue += revenue.ly;
-
-        return {
-          month: row.month,
-          actual: (actualGrossMargin / actualRevenue) * 100,
-          budget: (budgetGrossMargin / budgetRevenue) * 100,
-          ly: (lyGrossMargin / lyRevenue) * 100,
-        };
-      }
-
-      return {
-        month: row.month,
-        actual: (row.actual / revenue.actual) * 100,
-        budget: (row.budget / revenue.budget) * 100,
-        ly: (row.ly / revenue.ly) * 100,
-      };
-    });
+    return state.grossMarginChartMode === "YTD" ? grossMarginPercentYtd : grossMarginPercentMonthly;
   }
 
   function renderGrossMarginDetail(company) {
@@ -165,53 +141,61 @@
   function renderGrossMarginPercentChart(rows) {
     const width = 1000;
     const height = 280;
-    const paddingX = 72;
-    const paddingTop = 36;
-    const paddingBottom = 58;
+    const paddingX = 0;
+    const labelPaddingLeft = 80;
+    const paddingTop = 38;
+    const paddingBottom = 62;
     const series = [
       { key: "actual", label: "Actual", color: "#000000", strokeWidth: 5, dash: "" },
       { key: "budget", label: "Budget", color: "#B7B3AA", strokeWidth: 4, dash: "" },
       { key: "ly", label: "Last year", color: "#D1CEC7", strokeWidth: 4, dash: "7 7" },
     ];
     const values = rows.flatMap((row) => [row.actual, row.budget, row.ly]);
-    const minValue = Math.floor(Math.min(...values) - 1);
-    const maxValue = Math.ceil(Math.max(...values) + 1);
-    const innerWidth = width - paddingX * 2;
+    const minValue = Math.floor((Math.min(...values) - 0.7) * 2) / 2;
+    const maxValue = Math.ceil((Math.max(...values) + 0.7) * 2) / 2;
+    const plotLeft = 96;
+    const plotRight = width - 40;
     const innerHeight = height - paddingTop - paddingBottom;
 
-    const pointFor = (row, index, key) => {
-      const x = paddingX + (innerWidth / (rows.length - 1)) * index;
-      const y = paddingTop + ((maxValue - row[key]) / (maxValue - minValue)) * innerHeight;
-      return { x, y, value: row[key], month: row.month };
-    };
+    const xForIndex = (index) => width * ((index + 0.5) / rows.length);
+    const yForValue = (value) => paddingTop + ((maxValue - value) / (maxValue - minValue)) * innerHeight;
     const pointsBySeries = Object.fromEntries(
-      series.map((item) => [item.key, rows.map((row, index) => pointFor(row, index, item.key))])
+      series.map((item) => [
+        item.key,
+        rows.map((row, index) => ({
+          x: xForIndex(index),
+          y: yForValue(row[item.key]),
+          value: row[item.key],
+          month: row.month,
+        })),
+      ])
     );
     const yTicks = [maxValue, (maxValue + minValue) / 2, minValue];
 
     return `
-      <div style="background:white;border-radius:3px;padding:18px 18px 10px;">
+      <div style="background:white;border-radius:3px;padding:18px 0 10px;">
         <svg viewBox="0 0 ${width} ${height}" width="100%" height="280" role="img" aria-label="Gross Margin percentage of revenues line chart">
+          <rect x="0" y="0" width="${width}" height="${height}" fill="white"></rect>
           ${yTicks.map((tick) => {
-            const y = paddingTop + ((maxValue - tick) / (maxValue - minValue)) * innerHeight;
+            const y = yForValue(tick);
             return `
-              <line x1="${paddingX}" y1="${y}" x2="${width - paddingX}" y2="${y}" stroke="#D8D6D0" stroke-width="1" />
-              <text x="${paddingX - 12}" y="${y + 4}" text-anchor="end" font-size="20" fill="#817C75">${tick.toFixed(1)}%</text>
+              <line x1="${plotLeft}" y1="${y}" x2="${plotRight}" y2="${y}" stroke="#D8D6D0" stroke-width="1" />
+              <text x="${labelPaddingLeft}" y="${y + 4}" text-anchor="end" font-size="19" fill="#817C75">${tick.toFixed(1)}%</text>
             `;
           }).join("")}
+          ${pointsBySeries.actual.map((point) => `
+            <line x1="${point.x}" y1="${paddingTop}" x2="${point.x}" y2="${height - paddingBottom + 10}" stroke="#E6E5E1" stroke-width="1" />
+            <text x="${point.x}" y="${height - 16}" text-anchor="middle" font-size="22" font-weight="800" fill="#817C75">${point.month}</text>
+          `).join("")}
           ${series.map((item) => {
             const polyline = pointsBySeries[item.key].map((point) => `${point.x},${point.y}`).join(" ");
             return `<polyline points="${polyline}" fill="none" stroke="${item.color}" stroke-width="${item.strokeWidth}" stroke-linejoin="round" stroke-linecap="round" ${item.dash ? `stroke-dasharray="${item.dash}"` : ""} />`;
           }).join("")}
-          ${pointsBySeries.actual.map((point) => `
-            <line x1="${point.x}" y1="${paddingTop}" x2="${point.x}" y2="${height - paddingBottom + 10}" stroke="#E6E5E1" stroke-width="1" />
-            <text x="${point.x}" y="${height - 14}" text-anchor="middle" font-size="22" font-weight="800" fill="#817C75">${point.month}</text>
-          `).join("")}
           ${pointsBySeries.budget.map((point) => `<circle cx="${point.x}" cy="${point.y}" r="6" fill="#B7B3AA" />`).join("")}
           ${pointsBySeries.ly.map((point) => `<circle cx="${point.x}" cy="${point.y}" r="6" fill="#D1CEC7" />`).join("")}
           ${pointsBySeries.actual.map((point) => `
             <circle cx="${point.x}" cy="${point.y}" r="8" fill="#000000" />
-            <text x="${point.x}" y="${point.y - 16}" text-anchor="middle" font-size="20" font-weight="800" fill="#000000">${point.value.toFixed(1)}%</text>
+            <text x="${point.x}" y="${point.y - 15}" text-anchor="middle" font-size="18" font-weight="800" fill="#000000">${point.value.toFixed(1)}%</text>
           `).join("")}
         </svg>
       </div>
