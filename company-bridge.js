@@ -5,25 +5,25 @@
   if (!state.companyBridgeMode) state.companyBridgeMode = "YTD";
 
   const bridgeData = {
-    YTD: [
-      { label: "Revenue", actual: 10000, budget: 10000, ly: 9524 },
-      { label: "Gross Margin", actual: 3800, budget: 3750, ly: 3718 },
-      { label: "Adjusted EBITDA", actual: 2000, budget: 2000, ly: 1961 },
-      { label: "CAPEX", actual: 10, budget: 12, ly: 10.9, lowerIsBetter: true },
-      { label: "OpCF", actual: 1990, budget: 1988, ly: 1949 },
-    ],
-    Monthly: [
-      { label: "Revenue", actual: 2400, budget: 2438, ly: 2376 },
-      { label: "Gross Margin", actual: 912, budget: 914, ly: 885 },
-      { label: "Adjusted EBITDA", actual: 480, budget: 488, ly: 462 },
-      { label: "CAPEX", actual: 1.8, budget: 2.8, ly: 2.4, lowerIsBetter: true },
-      { label: "OpCF", actual: 478.2, budget: 485.2, ly: 459.6 },
-    ],
+    YTD: {
+      actual: { label: "Actual", values: { Revenue: 10000, "Gross Margin": 3800, "Adj. EBITDA": 2000, CAPEX: 10, OpCF: 1990 } },
+      budget: { label: "Budget", values: { Revenue: 10000, "Gross Margin": 3750, "Adj. EBITDA": 2000, CAPEX: 12, OpCF: 1988 } },
+      ly: { label: "Last year", values: { Revenue: 9524, "Gross Margin": 3718, "Adj. EBITDA": 1961, CAPEX: 10.9, OpCF: 1949 } },
+    },
+    Monthly: {
+      actual: { label: "Actual", values: { Revenue: 2400, "Gross Margin": 912, "Adj. EBITDA": 480, CAPEX: 1.8, OpCF: 478.2 } },
+      budget: { label: "Budget", values: { Revenue: 2438, "Gross Margin": 914, "Adj. EBITDA": 488, CAPEX: 2.8, OpCF: 485.2 } },
+      ly: { label: "Last year", values: { Revenue: 2376, "Gross Margin": 885, "Adj. EBITDA": 462, CAPEX: 2.4, OpCF: 459.6 } },
+    },
   };
 
+  const bridgeMetricOrder = ["Revenue", "Gross Margin", "Adj. EBITDA", "CAPEX", "OpCF"];
+
   function renderCompanyBridge(company) {
-    const rows = bridgeData[state.companyBridgeMode];
-    const maxValue = Math.max(...rows.flatMap((row) => [row.actual, row.budget, row.ly]));
+    const periodData = bridgeData[state.companyBridgeMode];
+    const maxValue = Math.max(
+      ...Object.values(periodData).flatMap((scenario) => bridgeMetricOrder.map((metric) => scenario.values[metric]))
+    );
 
     return section({
       title: "Revenue to OpCF bridge",
@@ -33,14 +33,10 @@
           : `${company.month} monthly snapshot`,
       right: renderBridgeToggle(),
       body: `
-        <div class="bridge-chart">
-          ${rows.map((row) => renderBridgeMetric(row, maxValue)).join("")}
+        <div class="scenario-bridge-grid">
+          ${["actual", "budget", "ly"].map((key) => renderScenarioBridge(key, periodData[key], maxValue)).join("")}
         </div>
-        <div class="legend">
-          <span><span class="legend-mark" style="background: var(--black);"></span>Actual</span>
-          <span><span class="legend-mark" style="background: #B7B3AA;"></span>Budget</span>
-          <span><span class="legend-mark" style="background: #D1CEC7;"></span>Last year</span>
-        </div>
+        <div class="scenario-bridge-note">Each block shows the same bridge from Revenue to OpCF for the selected period. CAPEX is shown as a small deduction between EBITDA and OpCF.</div>
       `,
     });
   }
@@ -54,42 +50,34 @@
     `;
   }
 
-  function renderBridgeMetric(row, maxValue) {
-    const varianceBudget = row.actual - row.budget;
-    const varianceLy = row.actual - row.ly;
-    const budgetGood = row.lowerIsBetter ? varianceBudget <= 0 : varianceBudget >= 0;
-    const lyGood = row.lowerIsBetter ? varianceLy <= 0 : varianceLy >= 0;
-
+  function renderScenarioBridge(key, scenario, maxValue) {
     return `
-      <div class="bridge-metric">
-        <div class="bridge-bars">
-          ${renderBridgeBar(row.actual, maxValue, "actual")}
-          ${renderBridgeBar(row.budget, maxValue, "budget")}
-          ${renderBridgeBar(row.ly, maxValue, "ly")}
-        </div>
-        <div class="bridge-label">${row.label}</div>
-        <div class="bridge-value">${formatBridgeValue(row.actual)}</div>
-        <div class="bridge-variance-row">
-          <div class="mini-badge ${budgetGood ? "good" : "bad"}">BUD<br>${formatBridgePct(row.actual, row.budget)}</div>
-          <div class="mini-badge ${lyGood ? "good" : "bad"}">LY<br>${formatBridgePct(row.actual, row.ly)}</div>
+      <div class="scenario-bridge-card ${key}">
+        <div class="scenario-title">${scenario.label}</div>
+        <div class="scenario-bars">
+          ${bridgeMetricOrder.map((metric) => renderScenarioMetric(metric, scenario.values[metric], maxValue, key)).join("")}
         </div>
       </div>
     `;
   }
 
-  function renderBridgeBar(value, maxValue, variant) {
-    const minHeight = value > 0 ? 3 : 0;
-    const height = Math.max(minHeight, (value / maxValue) * 100);
-    return `<div class="bridge-bar-wrap"><div class="bridge-bar ${variant}" style="height: ${height}%;"></div></div>`;
+  function renderScenarioMetric(metric, value, maxValue, key) {
+    const isCapex = metric === "CAPEX";
+    const height = Math.max(value > 0 ? 4 : 0, (value / maxValue) * 100);
+
+    return `
+      <div class="scenario-metric ${isCapex ? "capex" : ""}">
+        <div class="scenario-bar-area">
+          <div class="scenario-bar ${key} ${isCapex ? "capex" : ""}" style="height:${height}%;"></div>
+        </div>
+        <div class="scenario-metric-label">${metric}</div>
+        <div class="scenario-metric-value">${formatScenarioValue(value)}</div>
+      </div>
+    `;
   }
 
-  function formatBridgeValue(value) {
+  function formatScenarioValue(value) {
     return Number(value).toLocaleString(undefined, { maximumFractionDigits: value < 100 ? 1 : 0 });
-  }
-
-  function formatBridgePct(actual, compare) {
-    const pct = ((actual / compare - 1) * 100).toFixed(1);
-    return `${pct >= 0 ? "+" : ""}${pct}%`;
   }
 
   function renderStandardCompanyDetail() {
@@ -144,74 +132,102 @@
 
   const style = document.createElement("style");
   style.textContent = `
-    .bridge-chart {
+    .scenario-bridge-grid {
       display: grid;
-      grid-template-columns: repeat(5, minmax(0, 1fr));
-      gap: 12px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
       margin-top: 8px;
     }
 
-    .bridge-metric {
+    .scenario-bridge-card {
       background: #ffffff;
       border-radius: 3px;
-      padding: 16px 14px 14px;
-      min-height: 290px;
+      padding: 18px 16px 14px;
+      min-height: 340px;
       display: flex;
       flex-direction: column;
-      justify-content: flex-end;
     }
 
-    .bridge-bars {
-      height: 150px;
-      display: flex;
-      align-items: flex-end;
-      justify-content: center;
-      gap: 8px;
-      margin-bottom: 12px;
+    .scenario-title {
+      font-size: 13px;
+      font-weight: 900;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+      padding-bottom: 10px;
       border-bottom: 1px solid #D8D6D0;
     }
 
-    .bridge-bar-wrap {
-      width: 24px;
-      height: 100%;
+    .scenario-bridge-card.actual .scenario-title { color: #000000; }
+    .scenario-bridge-card.budget .scenario-title { color: #817C75; }
+    .scenario-bridge-card.ly .scenario-title { color: #9A968E; }
+
+    .scenario-bars {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 9px;
+      flex: 1;
+      align-items: end;
+    }
+
+    .scenario-metric {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      height: 260px;
+    }
+
+    .scenario-bar-area {
+      height: 170px;
       display: flex;
       align-items: flex-end;
-    }
-
-    .bridge-bar {
-      width: 100%;
-      min-height: 3px;
-    }
-
-    .bridge-bar.actual { background: #000000; }
-    .bridge-bar.budget { background: #B7B3AA; }
-    .bridge-bar.ly { background: #D1CEC7; }
-
-    .bridge-label {
-      text-align: center;
-      font-size: 13px;
-      font-weight: 900;
-      letter-spacing: .08em;
-      text-transform: uppercase;
-      min-height: 34px;
-    }
-
-    .bridge-value {
-      text-align: center;
-      font-size: 13px;
-      color: #817C75;
+      justify-content: center;
+      border-bottom: 1px solid #D8D6D0;
       margin-bottom: 10px;
-      font-weight: 700;
     }
 
-    .bridge-variance-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 6px;
+    .scenario-bar {
+      width: 28px;
+      min-height: 4px;
+      background: #000000;
     }
 
-    @media (max-width: 900px) {
-      .bridge-chart { grid-template-columns: 1fr; }
+    .scenario-bar.budget { background: #B7B3AA; }
+    .scenario-bar.ly { background: #D1CEC7; }
+    .scenario-bar.capex {
+      width: 20px;
+      opacity: .75;
+    }
+
+    .scenario-metric-label {
+      text-align: center;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      min-height: 28px;
+      line-height: 1.2;
+    }
+
+    .scenario-metric-value {
+      text-align: center;
+      font-size: 12px;
+      color: #817C75;
+      font-weight: 800;
+    }
+
+    .scenario-bridge-note {
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px solid #D8D6D0;
+      font-size: 12px;
+      color: #817C75;
+      line-height: 1.45;
+    }
+
+    @media (max-width: 1100px) {
+      .scenario-bridge-grid { grid-template-columns: 1fr; }
     }
   `;
   document.head.appendChild(style);
