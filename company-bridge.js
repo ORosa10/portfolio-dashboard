@@ -25,6 +25,12 @@
     "Adj. EBITDA": "#C7C4BD",
     OpCF: "#06DB49",
   };
+  const metricDetailMap = {
+    Revenue: "Revenues",
+    "Gross Margin": "Gross margin",
+    "Adj. EBITDA": "Adjusted EBITDA",
+    OpCF: "OpCF (EBITDA less Capex)",
+  };
 
   function renderCompanyBridge(company) {
     const periodData = bridgeData[state.companyBridgeMode];
@@ -74,16 +80,16 @@
   function renderMetricBar(metric, value, maxValue) {
     const height = Math.max(value > 0 ? 5 : 0, (value / maxValue) * 100);
     return `
-      <div class="compact-bar-slot">
+      <button class="compact-bar-slot" data-bridge-detail="${metricDetailMap[metric]}" title="Open ${metricDetailMap[metric]} detail">
         <div class="compact-bar" style="height:${height}%; background:${metricColors[metric]};"></div>
-      </div>
+      </button>
     `;
   }
 
   function renderBridgeLegend() {
     return `
       <div class="legend compact-bridge-legend">
-        ${bridgeMetricOrder.map((metric) => `<span><span class="legend-mark" style="background:${metricColors[metric]};"></span>${metric}</span>`).join("")}
+        ${bridgeMetricOrder.map((metric) => `<button class="legend-link" data-bridge-detail="${metricDetailMap[metric]}"><span class="legend-mark" style="background:${metricColors[metric]};"></span>${metric}</button>`).join("")}
       </div>
     `;
   }
@@ -140,6 +146,15 @@
         render();
       });
     });
+
+    document.querySelectorAll("[data-bridge-detail]").forEach((button) => {
+      button.addEventListener("click", () => {
+        state.selectedMetric = button.dataset.bridgeDetail;
+        state.detailMetric = button.dataset.bridgeDetail;
+        state.detailMode = state.companyBridgeMode === "Monthly" ? "MTD" : "YTD";
+        render();
+      });
+    });
   };
 
   const style = document.createElement("style");
@@ -184,11 +199,21 @@
       display: flex;
       align-items: flex-end;
       justify-content: center;
+      border: 0;
+      background: transparent;
+      padding: 0;
+      cursor: pointer;
+    }
+
+    .compact-bar-slot:hover .compact-bar {
+      transform: translateY(-3px);
+      box-shadow: 0 6px 14px rgba(0,0,0,.14);
     }
 
     .compact-bar {
       width: 100%;
       min-height: 5px;
+      transition: transform .15s ease, box-shadow .15s ease;
     }
 
     .compact-scenario-label {
@@ -216,6 +241,26 @@
       margin-top: 14px;
       border-top: 1px solid #D8D6D0;
       padding-top: 14px;
+    }
+
+    .legend-link {
+      border: 0;
+      background: transparent;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      color: inherit;
+      font: inherit;
+      font-weight: 900;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+
+    .legend-link:hover {
+      text-decoration: underline;
+      text-underline-offset: 5px;
     }
 
     @media (max-width: 1100px) {
