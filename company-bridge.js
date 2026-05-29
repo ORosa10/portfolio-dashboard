@@ -17,13 +17,35 @@
     },
   };
 
+  const balanceData = {
+    YTD: {
+      actual: { label: "Actual", values: { Debt: 20, Cash: 10, "Net Debt": 10 } },
+      budget: { label: "Budget", values: { Debt: 22, Cash: 9, "Net Debt": 13 } },
+      ly: { label: "Last year", values: { Debt: 20.6, Cash: 9.6, "Net Debt": 11 } },
+    },
+    Monthly: {
+      actual: { label: "Actual", values: { Debt: 20, Cash: 10, "Net Debt": 10 } },
+      budget: { label: "Budget", values: { Debt: 22, Cash: 9, "Net Debt": 13 } },
+      ly: { label: "Last year", values: { Debt: 20.6, Cash: 9.6, "Net Debt": 11 } },
+    },
+  };
+
   const scenarios = ["actual", "budget", "ly"];
   const bridgeMetricOrder = ["Revenue", "Gross Margin", "Adj. EBITDA", "OpCF"];
+  const balanceMetricOrder = ["Debt", "Cash", "Net Debt"];
+  const operatingMetricLabels = ["Revenues", "Gross margin", "Adjusted EBITDA", "CAPEX", "OpCF (EBITDA less Capex)"];
+  const balanceMetricLabels = ["Debt", "Cash", "Net debt / LTM EBITDA"];
+
   const metricColors = {
     Revenue: "#000000",
     "Gross Margin": "#8D8982",
     "Adj. EBITDA": "#C7C4BD",
     OpCF: "#06DB49",
+  };
+  const balanceColors = {
+    Debt: "#000000",
+    Cash: "#06DB49",
+    "Net Debt": "#8D8982",
   };
   const metricDetailMap = {
     Revenue: "Revenues",
@@ -47,9 +69,31 @@
       right: renderBridgeToggle(),
       body: `
         <div class="compact-bridge-chart">
-          ${scenarios.map((scenario) => renderScenarioGroup(scenario, periodData[scenario], maxValue)).join("")}
+          ${scenarios.map((scenario) => renderScenarioGroup(scenario, periodData[scenario], maxValue, bridgeMetricOrder, metricColors, true)).join("")}
         </div>
-        ${renderBridgeLegend()}
+        ${renderBridgeLegend(bridgeMetricOrder, metricColors, true)}
+      `,
+    });
+  }
+
+  function renderBalanceBridge(company) {
+    const periodData = balanceData[state.companyBridgeMode];
+    const maxValue = Math.max(
+      ...scenarios.flatMap((scenario) => balanceMetricOrder.map((metric) => periodData[scenario].values[metric]))
+    );
+
+    return section({
+      title: "Debt / Cash / Net Debt bridge",
+      kicker:
+        state.companyBridgeMode === "YTD"
+          ? `Balance sheet snapshot as of ${company.month}`
+          : `${company.month} balance sheet snapshot`,
+      right: `<span class="eyebrow">EURm</span>`,
+      body: `
+        <div class="compact-bridge-chart balance-bridge-chart">
+          ${scenarios.map((scenario) => renderScenarioGroup(scenario, periodData[scenario], maxValue, balanceMetricOrder, balanceColors, false)).join("")}
+        </div>
+        ${renderBridgeLegend(balanceMetricOrder, balanceColors, false)}
       `,
     });
   }
@@ -63,33 +107,43 @@
     `;
   }
 
-  function renderScenarioGroup(key, scenario, maxValue) {
+  function renderScenarioGroup(key, scenario, maxValue, metricOrder, colors, clickable) {
     return `
       <div class="compact-scenario-group ${key}">
         <div class="compact-bars">
-          ${bridgeMetricOrder.map((metric) => renderMetricBar(metric, scenario.values[metric], maxValue)).join("")}
+          ${metricOrder.map((metric) => renderMetricBar(metric, scenario.values[metric], maxValue, colors, clickable)).join("")}
         </div>
         <div class="compact-scenario-label">${scenario.label}</div>
         <div class="compact-values-row">
-          ${bridgeMetricOrder.map((metric) => `<span>${formatScenarioValue(scenario.values[metric])}</span>`).join("")}
+          ${metricOrder.map((metric) => `<span>${formatScenarioValue(scenario.values[metric])}</span>`).join("")}
         </div>
       </div>
     `;
   }
 
-  function renderMetricBar(metric, value, maxValue) {
+  function renderMetricBar(metric, value, maxValue, colors, clickable) {
     const height = Math.max(value > 0 ? 5 : 0, (value / maxValue) * 100);
+    const content = `<div class="compact-bar" style="height:${height}%; background:${colors[metric]};"></div>`;
+
+    if (!clickable) {
+      return `<div class="compact-bar-slot non-clickable">${content}</div>`;
+    }
+
     return `
       <button class="compact-bar-slot" data-bridge-detail="${metricDetailMap[metric]}" title="Open ${metricDetailMap[metric]} detail">
-        <div class="compact-bar" style="height:${height}%; background:${metricColors[metric]};"></div>
+        ${content}
       </button>
     `;
   }
 
-  function renderBridgeLegend() {
+  function renderBridgeLegend(metricOrder, colors, clickable) {
     return `
       <div class="legend compact-bridge-legend">
-        ${bridgeMetricOrder.map((metric) => `<button class="legend-link" data-bridge-detail="${metricDetailMap[metric]}"><span class="legend-mark" style="background:${metricColors[metric]};"></span>${metric}</button>`).join("")}
+        ${metricOrder.map((metric) => {
+          const marker = `<span class="legend-mark" style="background:${colors[metric]};"></span>${metric}`;
+          if (!clickable) return `<span>${marker}</span>`;
+          return `<button class="legend-link" data-bridge-detail="${metricDetailMap[metric]}">${marker}</button>`;
+        }).join("")}
       </div>
     `;
   }
@@ -98,24 +152,32 @@
     return Number(value).toLocaleString(undefined, { maximumFractionDigits: value < 100 ? 1 : 0 });
   }
 
+  function renderMetricSection(title, kicker, metrics) {
+    return section({
+      title,
+      kicker,
+      body: `
+        <div class="metric-head">
+          <div>Metric</div>
+          <div>YTD development</div>
+          <div>Month development</div>
+        </div>
+        ${metrics.map(renderMetricRow).join("")}
+      `,
+    });
+  }
+
   function renderStandardCompanyDetail() {
     const company = selectedCompany();
+    const operatingMetrics = company.metrics.filter((metric) => operatingMetricLabels.includes(metric.label));
+    const balanceMetrics = company.metrics.filter((metric) => balanceMetricLabels.includes(metric.label));
 
     return `
       ${companyHeader(company)}
       ${renderCompanyBridge(company)}
-      ${section({
-        title: "Financial indicators",
-        kicker: "YTD and MTD performance by metric",
-        body: `
-          <div class="metric-head">
-            <div>Metric</div>
-            <div>YTD development</div>
-            <div>Month development</div>
-          </div>
-          ${company.metrics.map(renderMetricRow).join("")}
-        `,
-      })}
+      ${renderBalanceBridge(company)}
+      ${renderMetricSection("Operating financial indicators", "YTD and MTD performance by operating metric", operatingMetrics)}
+      ${renderMetricSection("Balance sheet / leverage indicators", "Debt, cash and leverage position", balanceMetrics)}
       <div class="grid-2">
         ${section({
           title: `${state.selectedMetric} detail`,
@@ -193,6 +255,10 @@
       padding-bottom: 0;
     }
 
+    .balance-bridge-chart .compact-bars {
+      height: 180px;
+    }
+
     .compact-bar-slot {
       width: 34px;
       height: 100%;
@@ -205,9 +271,18 @@
       cursor: pointer;
     }
 
+    .compact-bar-slot.non-clickable {
+      cursor: default;
+    }
+
     .compact-bar-slot:hover .compact-bar {
       transform: translateY(-3px);
       box-shadow: 0 6px 14px rgba(0,0,0,.14);
+    }
+
+    .compact-bar-slot.non-clickable:hover .compact-bar {
+      transform: none;
+      box-shadow: none;
     }
 
     .compact-bar {
@@ -235,6 +310,10 @@
       font-size: 12px;
       font-weight: 800;
       color: #817C75;
+    }
+
+    .balance-bridge-chart .compact-values-row {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
     .compact-bridge-legend {
