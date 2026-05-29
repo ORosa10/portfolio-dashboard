@@ -2,74 +2,130 @@
 (function () {
   if (!window.RevenueData || !Array.isArray(window.RevenueData.records)) return;
 
-  const latestActualRecord = [...window.RevenueData.records]
-    .filter((record) => record.actual !== null && record.actual !== undefined && record.actual !== "")
-    .sort((a, b) => a.period.localeCompare(b.period))
-    .pop();
+  let initialised = false;
+  const originalRender = render;
 
-  const requestedPeriod = periodToKey(state.period || "May 2026");
-  const requestedRecord = window.RevenueData.records.find((record) => record.period === requestedPeriod);
-  const selectedRecord = requestedRecord || latestActualRecord || window.RevenueData.records[window.RevenueData.records.length - 1];
+  render = function () {
+    applyRevenueData({ keepRequestedPeriod: true });
+    originalRender();
+  };
 
-  // On initial load, the legacy dashboard defaults to May 2026 even if May actuals are not available yet.
-  // For the default view, use the latest month with actuals. If the user later selects May, the selector will keep May.
-  const shouldUseLatestActual = (state.period || "May 2026") === "May 2026" && selectedRecord.actual == null && latestActualRecord;
-  const reportingRecord = shouldUseLatestActual ? latestActualRecord : selectedRecord;
+  document.addEventListener(
+    "click",
+    function (event) {
+      const revenueChartButton = event.target.closest("[data-revenue-chart]");
+      if (revenueChartButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        state.revenueChartMode = revenueChartButton.dataset.revenueChart;
+        render();
+        return;
+      }
 
-  state.period = `${reportingRecord.month} ${reportingRecord.year}`;
+      const bridgeButton = event.target.closest("[data-bridge-detail]");
+      if (bridgeButton && bridgeButton.dataset.bridgeDetail === "Revenues") {
+        event.preventDefault();
+        event.stopPropagation();
+        state.selectedMetric = "Revenues";
+        state.detailMetric = "Revenues";
+        state.detailMode = state.companyBridgeMode === "Monthly" ? "MTD" : "YTD";
+        render();
+        return;
+      }
 
-  const selectedYear = reportingRecord.year;
-  const selectedMonthNumber = Number(reportingRecord.period.slice(5, 7));
+      const detailButton = event.target.closest("[data-open-detail]");
+      if (detailButton && detailButton.dataset.openDetail === "Revenues") {
+        event.preventDefault();
+        event.stopPropagation();
+        state.selectedMetric = "Revenues";
+        state.detailMetric = "Revenues";
+        state.detailMode = detailButton.dataset.mode || "YTD";
+        render();
+      }
+    },
+    true
+  );
 
-  const revenueSeries = window.RevenueData.records
-    .filter((record) => record.year === selectedYear && Number(record.period.slice(5, 7)) <= selectedMonthNumber)
-    .map((record) => ({
-      month: record.month,
-      actual: record.actual,
-      budget: record.budget,
-      ly: record.ly,
-    }));
+  applyRevenueData({ keepRequestedPeriod: false });
+  render();
 
-  const ytdActual = sum(revenueSeries, "actual");
-  const ytdBudget = sum(revenueSeries, "budget");
-  const ytdLy = sum(revenueSeries, "ly");
-  const mtd = revenueSeries[revenueSeries.length - 1];
+  function applyRevenueData(options) {
+    const keepRequestedPeriod = options && options.keepRequestedPeriod;
+    const latestActualRecord = [...window.RevenueData.records]
+      .filter((record) => record.actual !== null && record.actual !== undefined && record.actual !== "")
+      .sort((a, b) => a.period.localeCompare(b.period))
+      .pop();
 
-  revenueMonths.splice(0, revenueMonths.length, ...revenueSeries);
+    const requestedPeriod = periodToKey(state.period || "May 2026");
+    const requestedRecord = window.RevenueData.records.find((record) => record.period === requestedPeriod);
+    const selectedRecord = requestedRecord || latestActualRecord || window.RevenueData.records[window.RevenueData.records.length - 1];
 
-  const revenueMetric = baseMetrics.find((metric) => metric.label === "Revenues");
-  if (revenueMetric) {
-    revenueMetric.unit = window.RevenueData.unit;
-    revenueMetric.ytdActual = fmt(ytdActual);
-    revenueMetric.ytdBudgetAbs = abs(ytdActual, ytdBudget);
-    revenueMetric.ytdBudgetPct = pct(ytdActual, ytdBudget);
-    revenueMetric.ytdLyAbs = abs(ytdActual, ytdLy);
-    revenueMetric.ytdLyPct = pct(ytdActual, ytdLy);
-    revenueMetric.mtdActual = valueOrBlank(mtd.actual);
-    revenueMetric.mtdBudgetAbs = mtd.actual == null ? "n/a" : abs(mtd.actual, mtd.budget);
-    revenueMetric.mtdBudgetPct = mtd.actual == null ? "n/a" : pct(mtd.actual, mtd.budget);
-    revenueMetric.mtdLyAbs = mtd.actual == null ? "n/a" : abs(mtd.actual, mtd.ly);
-    revenueMetric.mtdLyPct = mtd.actual == null ? "n/a" : pct(mtd.actual, mtd.ly);
+    const shouldUseLatestActual =
+      !initialised &&
+      !keepRequestedPeriod &&
+      (state.period || "May 2026") === "May 2026" &&
+      selectedRecord &&
+      selectedRecord.actual == null &&
+      latestActualRecord;
+
+    const reportingRecord = shouldUseLatestActual ? latestActualRecord : selectedRecord;
+    initialised = true;
+
+    if (!reportingRecord) return;
+
+    state.period = `${reportingRecord.month} ${reportingRecord.year}`;
+
+    const selectedYear = reportingRecord.year;
+    const selectedMonthNumber = Number(reportingRecord.period.slice(5, 7));
+
+    const revenueSeries = window.RevenueData.records
+      .filter((record) => record.year === selectedYear && Number(record.period.slice(5, 7)) <= selectedMonthNumber)
+      .map((record) => ({
+        month: record.month,
+        actual: record.actual,
+        budget: record.budget,
+        ly: record.ly,
+      }));
+
+    const ytdActual = sum(revenueSeries, "actual");
+    const ytdBudget = sum(revenueSeries, "budget");
+    const ytdLy = sum(revenueSeries, "ly");
+    const mtd = revenueSeries[revenueSeries.length - 1];
+
+    revenueMonths.splice(0, revenueMonths.length, ...revenueSeries);
+
+    const revenueMetric = baseMetrics.find((metric) => metric.label === "Revenues");
+    if (revenueMetric) {
+      revenueMetric.unit = window.RevenueData.unit;
+      revenueMetric.ytdActual = fmt(ytdActual);
+      revenueMetric.ytdBudgetAbs = abs(ytdActual, ytdBudget);
+      revenueMetric.ytdBudgetPct = pct(ytdActual, ytdBudget);
+      revenueMetric.ytdLyAbs = abs(ytdActual, ytdLy);
+      revenueMetric.ytdLyPct = pct(ytdActual, ytdLy);
+      revenueMetric.mtdActual = valueOrBlank(mtd.actual);
+      revenueMetric.mtdBudgetAbs = mtd.actual == null ? "n/a" : abs(mtd.actual, mtd.budget);
+      revenueMetric.mtdBudgetPct = mtd.actual == null ? "n/a" : pct(mtd.actual, mtd.budget);
+      revenueMetric.mtdLyAbs = mtd.actual == null ? "n/a" : abs(mtd.actual, mtd.ly);
+      revenueMetric.mtdLyPct = mtd.actual == null ? "n/a" : pct(mtd.actual, mtd.ly);
+    }
+
+    const emg = companies.find((company) => company.id === "company_a");
+    if (emg) {
+      emg.currency = window.RevenueData.unit;
+      emg.month = reportingRecord.month;
+      emg.fy = String(reportingRecord.year);
+      emg.revenue = ytdActual;
+      emg.revenueBudget = ytdBudget;
+      emg.trend = revenueSeries.map((item) => item.actual || 0);
+      emg.comment = "Revenue values are loaded from data/revenues-data.js. Values are illustrative only and do not represent actual company performance.";
+    }
+
+    if (typeof formatMoney === "function") {
+      formatMoney = function (value) {
+        return `${Number(value).toLocaleString(undefined, { maximumFractionDigits: 1 })} ${window.RevenueData.unit}`;
+      };
+    }
   }
-
-  const emg = companies.find((company) => company.id === "company_a");
-  if (emg) {
-    emg.currency = window.RevenueData.unit;
-    emg.month = reportingRecord.month;
-    emg.fy = String(reportingRecord.year);
-    emg.revenue = ytdActual;
-    emg.revenueBudget = ytdBudget;
-    emg.trend = revenueSeries.map((item) => item.actual || 0);
-    emg.comment = "Revenue values are loaded from data/revenues-data.js. Values are illustrative only and do not represent actual company performance.";
-  }
-
-  if (typeof formatMoney === "function") {
-    formatMoney = function (value) {
-      return `${Number(value).toLocaleString(undefined, { maximumFractionDigits: 1 })} ${window.RevenueData.unit}`;
-    };
-  }
-
-  if (typeof render === "function") render();
 
   function periodToKey(label) {
     const monthMap = { Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06", Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12" };
