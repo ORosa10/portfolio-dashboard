@@ -2,10 +2,24 @@
 (function () {
   if (!window.RevenueData || !Array.isArray(window.RevenueData.records)) return;
 
-  const selectedPeriod = periodToKey(state.period || "May 2026");
-  const selectedRecord = window.RevenueData.records.find((record) => record.period === selectedPeriod) || window.RevenueData.records[window.RevenueData.records.length - 1];
-  const selectedYear = selectedRecord.year;
-  const selectedMonthNumber = Number(selectedRecord.period.slice(5, 7));
+  const latestActualRecord = [...window.RevenueData.records]
+    .filter((record) => record.actual !== null && record.actual !== undefined && record.actual !== "")
+    .sort((a, b) => a.period.localeCompare(b.period))
+    .pop();
+
+  const requestedPeriod = periodToKey(state.period || "May 2026");
+  const requestedRecord = window.RevenueData.records.find((record) => record.period === requestedPeriod);
+  const selectedRecord = requestedRecord || latestActualRecord || window.RevenueData.records[window.RevenueData.records.length - 1];
+
+  // On initial load, the legacy dashboard defaults to May 2026 even if May actuals are not available yet.
+  // For the default view, use the latest month with actuals. If the user later selects May, the selector will keep May.
+  const shouldUseLatestActual = (state.period || "May 2026") === "May 2026" && selectedRecord.actual == null && latestActualRecord;
+  const reportingRecord = shouldUseLatestActual ? latestActualRecord : selectedRecord;
+
+  state.period = `${reportingRecord.month} ${reportingRecord.year}`;
+
+  const selectedYear = reportingRecord.year;
+  const selectedMonthNumber = Number(reportingRecord.period.slice(5, 7));
 
   const revenueSeries = window.RevenueData.records
     .filter((record) => record.year === selectedYear && Number(record.period.slice(5, 7)) <= selectedMonthNumber)
@@ -31,21 +45,21 @@
     revenueMetric.ytdBudgetPct = pct(ytdActual, ytdBudget);
     revenueMetric.ytdLyAbs = abs(ytdActual, ytdLy);
     revenueMetric.ytdLyPct = pct(ytdActual, ytdLy);
-    revenueMetric.mtdActual = fmt(mtd.actual);
-    revenueMetric.mtdBudgetAbs = abs(mtd.actual, mtd.budget);
-    revenueMetric.mtdBudgetPct = pct(mtd.actual, mtd.budget);
-    revenueMetric.mtdLyAbs = abs(mtd.actual, mtd.ly);
-    revenueMetric.mtdLyPct = pct(mtd.actual, mtd.ly);
+    revenueMetric.mtdActual = valueOrBlank(mtd.actual);
+    revenueMetric.mtdBudgetAbs = mtd.actual == null ? "n/a" : abs(mtd.actual, mtd.budget);
+    revenueMetric.mtdBudgetPct = mtd.actual == null ? "n/a" : pct(mtd.actual, mtd.budget);
+    revenueMetric.mtdLyAbs = mtd.actual == null ? "n/a" : abs(mtd.actual, mtd.ly);
+    revenueMetric.mtdLyPct = mtd.actual == null ? "n/a" : pct(mtd.actual, mtd.ly);
   }
 
   const emg = companies.find((company) => company.id === "company_a");
   if (emg) {
     emg.currency = window.RevenueData.unit;
-    emg.month = selectedRecord.month;
-    emg.fy = String(selectedYear);
+    emg.month = reportingRecord.month;
+    emg.fy = String(reportingRecord.year);
     emg.revenue = ytdActual;
     emg.revenueBudget = ytdBudget;
-    emg.trend = revenueSeries.map((item) => item.actual);
+    emg.trend = revenueSeries.map((item) => item.actual || 0);
     emg.comment = "Revenue values are loaded from data/revenues-data.js. Values are illustrative only and do not represent actual company performance.";
   }
 
@@ -71,6 +85,10 @@
 
   function fmt(value) {
     return Number(value).toLocaleString(undefined, { maximumFractionDigits: 1 });
+  }
+
+  function valueOrBlank(value) {
+    return value === null || value === undefined || value === "" ? "n/a" : fmt(value);
   }
 
   function pct(actual, base) {
