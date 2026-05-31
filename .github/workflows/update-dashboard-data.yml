@@ -1,0 +1,78 @@
+name: Update dashboard data from Excel
+
+on:
+  workflow_dispatch:
+    inputs:
+      excel_path:
+        description: "Optional local Excel path in repo, e.g. input/source.xlsx. Leave empty to download from OneDrive."
+        required: false
+        default: ""
+  schedule:
+    # Runs monthly on the 3rd day at 06:30 UTC.
+    - cron: "30 6 3 * *"
+
+permissions:
+  contents: write
+
+jobs:
+  update-dashboard-data:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Resolve Excel source
+        id: excel
+        shell: bash
+        env:
+          INPUT_EXCEL_PATH: ${{ github.event.inputs.excel_path }}
+        run: |
+          set -euo pipefail
+          mkdir -p input
+          if [ -n "${INPUT_EXCEL_PATH:-}" ]; then
+            echo "Using local Excel path: ${INPUT_EXCEL_PATH}"
+            test -f "${INPUT_EXCEL_PATH}"
+            echo "path=${INPUT_EXCEL_PATH}" >> "$GITHUB_OUTPUT"
+          else
+            echo "Downloading Excel from OneDrive / Microsoft Graph"
+            python scripts/download_onedrive_file.py --output input/source.xlsx
+            echo "path=input/source.xlsx" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate dashboard data
+        run: |
+          python scripts/generate_dashboard_data.py \
+            --excel "${{ steps.excel.outputs.path }}" \
+            --mapping config/excel-mapping.json \
+            --out-dir .
+
+      - name: Check generated files
+        run: |
+          test -f data/revenues-data.js
+          test -f data/operating-metrics-data.js
+          test -f data/balance-sheet-data.js
+          git diff -- data/revenues-data.js data/operating-metrics-data.js data/balance-sheet-data.js
+
+      - name: Commit generated data if changed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- data/revenues-data.js data/operating-metrics-data.js data/balance-sheet-data.js; then
+            echo "No generated data changes."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/revenues-data.js data/operating-metrics-data.js data/balance-sheet-data.js
+          git commit -m "Update dashboard data from Excel"
+          git push
