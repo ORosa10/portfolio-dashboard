@@ -38,14 +38,27 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p input
+
           if [ -n "${INPUT_EXCEL_PATH:-}" ]; then
-            echo "Using local Excel path: ${INPUT_EXCEL_PATH}"
-            test -f "${INPUT_EXCEL_PATH}"
-            echo "path=${INPUT_EXCEL_PATH}" >> "$GITHUB_OUTPUT"
+            CANDIDATE="${INPUT_EXCEL_PATH}"
           else
+            CANDIDATE="input/source.xlsx"
+          fi
+
+          if [ -f "$CANDIDATE" ]; then
+            echo "Using local Excel path: $CANDIDATE"
+            echo "path=$CANDIDATE" >> "$GITHUB_OUTPUT"
+          elif [ -f "${CANDIDATE}.xlsx" ]; then
+            echo "Using local Excel fallback path: ${CANDIDATE}.xlsx"
+            echo "path=${CANDIDATE}.xlsx" >> "$GITHUB_OUTPUT"
+          elif [ -z "${INPUT_EXCEL_PATH:-}" ]; then
             echo "Downloading Excel from OneDrive / Microsoft Graph"
             python scripts/download_onedrive_file.py --output input/source.xlsx
             echo "path=input/source.xlsx" >> "$GITHUB_OUTPUT"
+          else
+            echo "Excel file not found: $CANDIDATE"
+            echo "Also checked fallback: ${CANDIDATE}.xlsx"
+            exit 1
           fi
 
       - name: Generate dashboard data
