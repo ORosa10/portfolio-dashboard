@@ -4,32 +4,6 @@
 
   if (!state.companyBridgeMode) state.companyBridgeMode = "YTD";
 
-  const bridgeData = {
-    YTD: {
-      actual: { label: "Actual", values: { Revenue: 10000, "Gross Margin": 3800, "Adj. EBITDA": 2000, OpCF: 1990 } },
-      budget: { label: "Budget", values: { Revenue: 10000, "Gross Margin": 3750, "Adj. EBITDA": 2000, OpCF: 1988 } },
-      ly: { label: "Last year", values: { Revenue: 9524, "Gross Margin": 3718, "Adj. EBITDA": 1961, OpCF: 1949 } },
-    },
-    Monthly: {
-      actual: { label: "Actual", values: { Revenue: 2400, "Gross Margin": 912, "Adj. EBITDA": 480, OpCF: 478.2 } },
-      budget: { label: "Budget", values: { Revenue: 2438, "Gross Margin": 914, "Adj. EBITDA": 488, OpCF: 485.2 } },
-      ly: { label: "Last year", values: { Revenue: 2376, "Gross Margin": 885, "Adj. EBITDA": 462, OpCF: 459.6 } },
-    },
-  };
-
-  const balanceData = {
-    YTD: {
-      actual: { label: "Actual", values: { Debt: 20, Cash: 10, "Net Debt": 10 } },
-      budget: { label: "Budget", values: { Debt: 22, Cash: 9, "Net Debt": 13 } },
-      ly: { label: "Last year", values: { Debt: 20.6, Cash: 9.6, "Net Debt": 11 } },
-    },
-    Monthly: {
-      actual: { label: "Actual", values: { Debt: 20, Cash: 10, "Net Debt": 10 } },
-      budget: { label: "Budget", values: { Debt: 22, Cash: 9, "Net Debt": 13 } },
-      ly: { label: "Last year", values: { Debt: 20.6, Cash: 9.6, "Net Debt": 11 } },
-    },
-  };
-
   const scenarios = ["actual", "budget", "ly"];
   const bridgeMetricOrder = ["Revenue", "Gross Margin", "Adj. EBITDA", "OpCF"];
   const balanceMetricOrder = ["Debt", "Cash", "Net Debt"];
@@ -55,10 +29,11 @@
   };
 
   function renderCompanyBridge(company) {
-    const periodData = bridgeData[state.companyBridgeMode];
+    const periodData = buildOperatingBridgeData();
     const maxValue = Math.max(
-      ...scenarios.flatMap((scenario) => bridgeMetricOrder.map((metric) => periodData[scenario].values[metric]))
-    );
+      ...scenarios.flatMap((scenario) => bridgeMetricOrder.map((metric) => Math.max(0, Number(periodData[scenario].values[metric]) || 0))),
+      1
+    ) * 1.1;
 
     return section({
       title: "Revenue to OpCF bridge",
@@ -77,10 +52,11 @@
   }
 
   function renderBalanceBridge(company) {
-    const periodData = balanceData[state.companyBridgeMode];
+    const periodData = buildBalanceBridgeData();
     const maxValue = Math.max(
-      ...scenarios.flatMap((scenario) => balanceMetricOrder.map((metric) => periodData[scenario].values[metric]))
-    );
+      ...scenarios.flatMap((scenario) => balanceMetricOrder.map((metric) => Math.max(0, Number(periodData[scenario].values[metric]) || 0))),
+      1
+    ) * 1.1;
 
     return section({
       title: "Debt / Cash / Net Debt bridge",
@@ -88,7 +64,7 @@
         state.companyBridgeMode === "YTD"
           ? `Balance sheet snapshot as of ${company.month}`
           : `${company.month} balance sheet snapshot`,
-      right: `<span class="eyebrow">EURm</span>`,
+      right: `<span class="eyebrow">CZKm</span>`,
       body: `
         <div class="compact-bridge-chart balance-bridge-chart">
           ${scenarios.map((scenario) => renderScenarioGroup(scenario, periodData[scenario], maxValue, balanceMetricOrder, balanceColors, false)).join("")}
@@ -96,6 +72,83 @@
         ${renderBridgeLegend(balanceMetricOrder, balanceColors, false)}
       `,
     });
+  }
+
+  function buildOperatingBridgeData() {
+    const reporting = getReportingRecord();
+    const mode = state.companyBridgeMode === "Monthly" ? "Monthly" : "YTD";
+    const year = reporting.year;
+    const monthNumber = Number(reporting.period.slice(5, 7));
+
+    return {
+      actual: { label: "Actual", values: operatingValuesForScenario("actual", year, monthNumber, mode) },
+      budget: { label: "Budget", values: operatingValuesForScenario("budget", year, monthNumber, mode) },
+      ly: { label: "Last year", values: operatingValuesForScenario("ly", year, monthNumber, mode) },
+    };
+  }
+
+  function operatingValuesForScenario(scenario, year, monthNumber, mode) {
+    return {
+      Revenue: valueForRows(revenueRows(year, monthNumber), scenario, mode),
+      "Gross Margin": valueForRows(metricRows("gross_margin", year, monthNumber), scenario, mode),
+      "Adj. EBITDA": valueForRows(metricRows("adjusted_ebitda", year, monthNumber), scenario, mode),
+      OpCF: valueForRows(metricRows("opcf", year, monthNumber), scenario, mode),
+    };
+  }
+
+  function buildBalanceBridgeData() {
+    const reporting = getReportingRecord();
+    const period = reporting.period;
+    return {
+      actual: { label: "Actual", values: balanceValuesForScenario("actual", period) },
+      budget: { label: "Budget", values: balanceValuesForScenario("budget", period) },
+      ly: { label: "Last year", values: balanceValuesForScenario("ly", period) },
+    };
+  }
+
+  function balanceValuesForScenario(scenario, period) {
+    return {
+      Debt: valueFromBalanceRow("debt", period, scenario),
+      Cash: valueFromBalanceRow("cash", period, scenario),
+      "Net Debt": valueFromBalanceRow("net_debt", period, scenario),
+    };
+  }
+
+  function valueFromBalanceRow(metricId, period, scenario) {
+    const row = (window.BalanceSheetData?.records?.[metricId] || []).find((item) => item.period === period);
+    return Number(row?.[scenario]) || 0;
+  }
+
+  function getReportingRecord() {
+    const key = periodToKey(state.period || "May 2026");
+    const requested = window.RevenueData?.records?.find((record) => record.period === key);
+    const latestActual = [...(window.RevenueData?.records || [])]
+      .filter((record) => record.actual !== null && record.actual !== undefined && record.actual !== "")
+      .sort((a, b) => a.period.localeCompare(b.period))
+      .pop();
+    return requested || latestActual || { period: "2026-02", month: "Feb", year: 2026 };
+  }
+
+  function periodToKey(label) {
+    const monthMap = { Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06", Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12" };
+    const parts = String(label).split(" ");
+    return `${parts[1] || "2026"}-${monthMap[parts[0]] || "05"}`;
+  }
+
+  function revenueRows(year, monthNumber) {
+    return (window.RevenueData?.records || []).filter((record) => record.year === year && Number(record.period.slice(5, 7)) <= monthNumber);
+  }
+
+  function metricRows(metricId, year, monthNumber) {
+    return (window.OperatingMetricData?.records?.[metricId] || []).filter((record) => record.year === year && Number(record.period.slice(5, 7)) <= monthNumber);
+  }
+
+  function valueForRows(rows, scenario, mode) {
+    if (mode === "Monthly") {
+      const row = rows[rows.length - 1];
+      return Number(row?.[scenario]) || 0;
+    }
+    return rows.reduce((total, row) => total + (Number(row?.[scenario]) || 0), 0);
   }
 
   function renderBridgeToggle() {
@@ -122,7 +175,8 @@
   }
 
   function renderMetricBar(metric, value, maxValue, colors, clickable) {
-    const height = Math.max(value > 0 ? 5 : 0, (value / maxValue) * 100);
+    const numericValue = Number(value) || 0;
+    const height = Math.max(numericValue > 0 ? 5 : 0, (numericValue / maxValue) * 100);
     const content = `<div class="compact-bar" style="height:${height}%; background:${colors[metric]};"></div>`;
 
     if (!clickable) {
@@ -149,7 +203,8 @@
   }
 
   function formatScenarioValue(value) {
-    return Number(value).toLocaleString(undefined, { maximumFractionDigits: value < 100 ? 1 : 0 });
+    const numericValue = Number(value) || 0;
+    return numericValue.toLocaleString(undefined, { maximumFractionDigits: Math.abs(numericValue) < 100 ? 1 : 0 });
   }
 
   function renderMetricSection(title, kicker, metrics) {
