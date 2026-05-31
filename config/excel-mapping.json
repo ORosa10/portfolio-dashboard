@@ -1,0 +1,97 @@
+{
+  "workbook": {
+    "actual_sheet": "EMG_act",
+    "budget_sheet": "EMG_bud",
+    "date_row": 11,
+    "start_column": "C",
+    "start_period": "2020-01",
+    "unit": "CZKm"
+  },
+  "outputs": {
+    "revenues": "data/revenues-data.js",
+    "operating_metrics": "data/operating-metrics-data.js",
+    "balance_sheet": "data/balance-sheet-data.js"
+  },
+  "metrics": {
+    "revenues": {
+      "category": "revenues",
+      "label": "Revenues",
+      "source_label": "CONSOLIDATED REVENUES",
+      "actual_row": 16,
+      "budget_row": 16,
+      "unit": "CZKm",
+      "lower_is_better": false
+    },
+    "gross_margin": {
+      "category": "operating",
+      "label": "Gross Margin",
+      "source_label": "Gross Margin",
+      "actual_row": 17,
+      "budget_row": 17,
+      "unit": "CZKm",
+      "lower_is_better": false
+    },
+    "adjusted_ebitda": {
+      "category": "operating",
+      "label": "Adjusted EBITDA",
+      "source_label": "REP. EBITDA (Excl. Licence Depreciation)",
+      "actual_row": 19,
+      "budget_row": 19,
+      "unit": "CZKm",
+      "lower_is_better": false
+    },
+    "capex": {
+      "category": "operating",
+      "label": "CAPEX",
+      "source_label": "CAPEX",
+      "actual_row": 21,
+      "budget_row": 21,
+      "unit": "CZKm",
+      "lower_is_better": true
+    },
+    "opcf": {
+      "category": "operating",
+      "label": "OpCF (EBITDA less Capex)",
+      "source_label": "REP. EBITDA - CAPEX",
+      "formula": "adjusted_ebitda - capex",
+      "unit": "CZKm",
+      "lower_is_better": false
+    },
+    "net_debt": {
+      "category": "balance_sheet",
+      "label": "Net debt",
+      "source_label": "NET DEBT",
+      "actual_row": 22,
+      "budget_row": 22,
+      "unit": "CZKm",
+      "lower_is_better": true
+    },
+    "debt": {
+      "category": "balance_sheet",
+      "label": "Debt",
+      "source_label": "Debt",
+      "actual_row": 23,
+      "budget_row": 23,
+      "unit": "CZKm",
+      "lower_is_better": true
+    },
+    "cash": {
+      "category": "balance_sheet",
+      "label": "Cash",
+      "source_label": "Cash",
+      "actual_row": 24,
+      "budget_row": 24,
+      "unit": "CZKm",
+      "lower_is_better": false
+    },
+    "net_debt_ltm_ebitda": {
+      "category": "balance_sheet",
+      "label": "Net debt / LTM EBITDA",
+      "source_label": "Net Debt / LTM EBITDA",
+      "actual_row": 25,
+      "budget_row": 25,
+      "unit": "x",
+      "lower_is_better": true
+    }
+  }
+}
